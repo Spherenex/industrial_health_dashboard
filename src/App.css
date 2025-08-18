@@ -96,10 +96,54 @@
   border-radius: 0.375rem;
   font-size: 0.875rem;
   transition: background-color 150ms;
+  border: none;
+  cursor: pointer;
 }
 
 .refresh-button:hover {
   background-color: #2563eb;
+}
+
+/* Button Group Styling */
+.button-group {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: 1rem;
+}
+
+@media (max-width: 767px) {
+  .button-group {
+    margin-left: 0;
+    margin-top: 0.5rem;
+  }
+}
+
+/* Export Button Styling */
+.export-button {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 150ms ease;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+}
+
+.export-button:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
+}
+
+.export-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
 }
 
 .loading-indicator {
