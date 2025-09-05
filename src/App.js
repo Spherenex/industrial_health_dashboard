@@ -24,6 +24,160 @@ const IndustrialHealthDashboard = () => {
     angle: 0
   });
 
+  const [insights, setInsights] = useState({});
+  const [alerts, setAlerts] = useState([]);
+  const [showAlertModal, setShowAlertModal] = useState(false);
+
+  // Function to analyze trends and provide ML-based suggestions
+  const analyzeTrend = (data, metric) => {
+    if (!data || data.length < 2) return null;
+    
+    const values = data.map(item => parseFloat(item[metric]));
+    const recentValues = values.slice(-5); // Look at last 5 readings
+    
+    // Calculate trend
+    const trend = recentValues[recentValues.length - 1] - recentValues[0];
+    const avgValue = recentValues.reduce((a, b) => a + b, 0) / recentValues.length;
+    const stdDev = Math.sqrt(
+      recentValues.reduce((sq, n) => sq + Math.pow(n - avgValue, 2), 0) / recentValues.length
+    );
+    
+    // Threshold detection (assuming normal distribution)
+    const isAbnormal = Math.abs(recentValues[recentValues.length - 1] - avgValue) > (2 * stdDev);
+    
+    // Determine rate of change
+    const rateOfChange = ((recentValues[recentValues.length - 1] - recentValues[0]) / recentValues[0]) * 100;
+    
+    // Generate detailed insights based on metric type
+    const insights = {
+      current: {
+        high: [
+          "⚠️ High current detected. Risk of overload or short circuit.",
+          "1. Check for any short circuits in the wiring system",
+          "2. Verify load distribution across phases",
+          "3. Inspect insulation resistance of equipment"
+        ],
+        low: [
+          "⚠️ Low current detected. Possible connection issues.",
+          "1. Check for loose connections or disconnected components",
+          "2. Verify power supply unit functionality",
+          "3. Inspect circuit breakers and fuses"
+        ],
+        stable: [
+          "✅ Current levels are stable.",
+          "1. Continue monitoring for any fluctuations",
+          "2. Schedule next routine maintenance"
+        ],
+        prediction: "Current trend analysis indicates potential issues in"
+      },
+      voltage: {
+        high: [
+          "⚠️ High voltage detected. Risk to equipment.",
+          "1. Check voltage regulator settings",
+          "2. Verify transformer tap settings",
+          "3. Monitor power factor correction"
+        ],
+        low: [
+          "⚠️ Low voltage detected. Performance impact likely.",
+          "1. Check for power supply issues",
+          "2. Inspect distribution network",
+          "3. Verify load balancing"
+        ],
+        stable: [
+          "✅ Voltage levels are stable.",
+          "1. Monitor power quality metrics",
+          "2. Review energy efficiency"
+        ],
+        prediction: "Voltage trend suggests potential issues in"
+      },
+      temperature: {
+        high: [
+          "🔥 High temperature detected. Risk of equipment damage.",
+          "1. Check cooling system efficiency",
+          "2. Verify airflow and ventilation",
+          "3. Inspect thermal insulation"
+        ],
+        low: [
+          "❄️ Low temperature detected. Check environment.",
+          "1. Verify heating system operation",
+          "2. Check for cold air infiltration",
+          "3. Monitor ambient conditions"
+        ],
+        stable: [
+          "✅ Temperature is within safe range.",
+          "1. Continue monitoring thermal trends",
+          "2. Schedule preventive HVAC maintenance"
+        ],
+        prediction: "Temperature trends indicate potential issues in"
+      },
+      humidity: {
+        high: [
+          "💧 High humidity detected. Risk of corrosion.",
+          "1. Check dehumidification systems",
+          "2. Inspect for water leaks",
+          "3. Verify ventilation effectiveness"
+        ],
+        low: [
+          "🏜️ Low humidity detected. Static risk present.",
+          "1. Check humidification systems",
+          "2. Monitor material conditions",
+          "3. Verify environmental seals"
+        ],
+        stable: [
+          "✅ Humidity levels are optimal.",
+          "1. Monitor seasonal variations",
+          "2. Check moisture barriers"
+        ],
+        prediction: "Humidity conditions may affect equipment in"
+      },
+      oilLevel: {
+        high: [
+          "🛢️ High oil level detected. Risk of leakage.",
+          "1. Check for overfilling conditions",
+          "2. Inspect seals and gaskets",
+          "3. Verify oil pressure readings"
+        ],
+        low: [
+          "⚠️ Low oil level detected. Maintenance needed.",
+          "1. Check for leaks or consumption",
+          "2. Schedule oil top-up",
+          "3. Monitor oil pressure"
+        ],
+        stable: [
+          "✅ Oil levels are normal.",
+          "1. Plan next oil analysis",
+          "2. Monitor consumption rate"
+        ],
+        prediction: "Oil maintenance may be needed in"
+      }
+    };
+    
+    // Generate suggestions array
+    let suggestion = [];
+    if (isAbnormal) {
+      if (trend > 0) {
+        suggestion = insights[metric]?.high || [`⚠️ Abnormal increase in ${metric} detected.`];
+      } else {
+        suggestion = insights[metric]?.low || [`⚠️ Abnormal decrease in ${metric} detected.`];
+      }
+      
+      // Add predictive insight if rate of change is significant
+      if (Math.abs(rateOfChange) > 10) {
+        const timeToThreshold = Math.abs((100 / rateOfChange) * 24); // Hours until significant change
+        suggestion.push(`${insights[metric]?.prediction || "May require attention in"} ${timeToThreshold.toFixed(1)} hours.`);
+      }
+    } else {
+      suggestion = insights[metric]?.stable || [`✅ ${metric} levels are stable.`];
+    }
+    
+    return {
+      trend,
+      isAbnormal,
+      suggestion,
+      rateOfChange: rateOfChange.toFixed(1) + '%/hour'
+    };
+  };
+
   // Google Sheet ID from your provided URL
   const SHEET_ID = '1kMIFbO2SZtQy-d_G5qGLLADygHX3W-7WCVI-V9BWH-A';
   const SHEET_NAME = 'Sheet1'; // Adjust if needed
@@ -67,6 +221,8 @@ const IndustrialHealthDashboard = () => {
               rowData[header] = null;
             }
           });
+
+          // Return the row data
           
           // Transform data keys to match our expected format
           return {
@@ -87,14 +243,25 @@ const IndustrialHealthDashboard = () => {
         // Get latest values for the cards
         const latestRow = processedData[processedData.length - 1];
         
+        // Analyze trends after data is processed
+        const metrics = ['temperature', 'humidity', 'voltage', 'current', 'oilLevel'];
+        const newInsights = {};
+        metrics.forEach(metric => {
+          newInsights[metric] = analyzeTrend(processedData, metric);
+        });
+        
         setConnectionStatus('✅ Connected to Google Sheet');
         setDataSource('Google Sheet (Live Data)');
         setData(processedData);
         setLatestValues(latestRow);
         setLastUpdate(new Date().toLocaleString());
+        setInsights(newInsights);
         setLoading(false);
         
-        console.log(`✅ SUCCESS: Fetched data from Google Sheet - ${processedData.length} rows`);
+        // Check for critical alerts
+        checkForCriticalAlerts();
+        
+        console.log(`✅ SUCCESS: Fetched data from Google Sheet - ${processedData.length} rows with insights`);
         return processedData;
       } else {
         throw new Error('No data found in Google Sheet');
@@ -106,8 +273,19 @@ const IndustrialHealthDashboard = () => {
       setLoading(false);
       setError(`Failed to fetch data: ${error.message}. Make sure your Google Sheet is publicly accessible with the "Anyone with the link" viewing permission.`);
       
-      // Generate fallback data to prevent app crash
-      return generateFallbackData();
+      // Generate fallback data and insights
+      const fallbackData = generateFallbackData();
+      const metrics = ['temperature', 'humidity', 'voltage', 'current', 'oilLevel'];
+      const fallbackInsights = {};
+      metrics.forEach(metric => {
+        fallbackInsights[metric] = analyzeTrend(fallbackData, metric);
+      });
+      setInsights(fallbackInsights);
+      
+      // Check for critical alerts with fallback data
+      checkForCriticalAlerts();
+      
+      return fallbackData;
     }
   };
 
@@ -955,8 +1133,116 @@ const IndustrialHealthDashboard = () => {
     };
   };
 
-  // Reusable styled card component
+  // Function to check all metrics and generate popup alerts
+  const checkForCriticalAlerts = () => {
+    const currentAlerts = [];
+    const testValues = {
+      'Temperature': '25.0',
+      'Humidity': '50.0', 
+      'Oil Level': '2.0',  // Should trigger
+      'Voltage': '5.0',    // Should trigger
+      'Current': '500',
+      'Power': '2000',     // Should trigger
+      'Energy': '5.0',
+      'Angle': '10.0'
+    };
+
+    Object.entries(testValues).forEach(([metric, value]) => {
+      const alert = getMetricAlert(metric, value);
+      if (alert) {
+        currentAlerts.push({
+          id: Date.now() + Math.random(),
+          metric,
+          value,
+          alert,
+          timestamp: new Date().toLocaleTimeString()
+        });
+      }
+    });
+
+    if (currentAlerts.length > 0) {
+      setAlerts(currentAlerts);
+      setShowAlertModal(true);
+    }
+  };
+
+  // Function to dismiss alerts
+  const dismissAlert = (alertId) => {
+    setAlerts(prev => prev.filter(alert => alert.id !== alertId));
+    if (alerts.length <= 1) {
+      setShowAlertModal(false);
+    }
+  };
+
+  // Function to dismiss all alerts
+  const dismissAllAlerts = () => {
+    setAlerts([]);
+    setShowAlertModal(false);
+  };
+
+  // Function to check metric thresholds and generate alerts
+  const getMetricAlert = (metric, value) => {
+    console.log(`🔍 Checking alert for: ${metric} with value: ${value}`);
+    
+    // Simple direct mapping - no complex normalization
+    const thresholds = {
+      'Temperature': { low: 15, high: 35 },
+      'Humidity': { low: 30, high: 70 },
+      'Oil Level': { low: 5, high: 85 },
+      'Voltage': { low: 20, high: 240 },
+      'Current': { low: 50, high: 1200 },
+      'Power': { low: 200, high: 1500 },
+      'Energy': { low: 0.1, high: 40 },
+      'Angle': { low: -150, high: 150 }
+    };
+
+    const threshold = thresholds[metric];
+    
+    if (!threshold) {
+      console.log(`❌ No threshold found for metric: ${metric}`);
+      return null;
+    }
+
+    const numValue = parseFloat(value);
+    if (isNaN(numValue)) {
+      console.log(`❌ Invalid value for ${metric}: ${value}`);
+      return null;
+    }
+
+    console.log(`📊 ${metric}: ${numValue} vs low: ${threshold.low}, high: ${threshold.high}`);
+
+    if (numValue <= threshold.low) {
+      console.log(`🚨 LOW ALERT triggered for ${metric}!`);
+      return {
+        type: 'low',
+        message: `⚠️ CRITICAL: Low ${metric} Detected!`,
+        description: `Value: ${numValue} (Min: ${threshold.low})`,
+        icon: '🔴',
+        color: '#ff0000',
+        backgroundColor: 'rgba(255, 0, 0, 0.15)'
+      };
+    } else if (numValue >= threshold.high) {
+      console.log(`🚨 HIGH ALERT triggered for ${metric}!`);
+      return {
+        type: 'high',
+        message: `⚠️ ALERT: High ${metric} Warning!`,
+        description: `Value: ${numValue} (Max: ${threshold.high})`,
+        icon: '🔴',
+        color: '#ff0000',
+        backgroundColor: 'rgba(255, 0, 0, 0.15)'
+      };
+    }
+    
+    console.log(`✅ No alert needed for ${metric}: ${numValue} is within range`);
+    return null;
+  };
+
+  // Reusable styled card component with alert functionality
   const MetricCard = ({ title, value, unit, color1, color2, icon, secondaryValue = null, secondaryLabel = null }) => {
+    console.log(`🃏 MetricCard rendering - Title: "${title}", Value: "${value}"`);
+    const alert = getMetricAlert(title, value);
+    console.log(`🚨 Alert result for ${title}:`, alert);
+    
     const cardStyle = {
       background: `linear-gradient(135deg, ${color1} 0%, ${color2} 100%)`
     };
@@ -971,6 +1257,26 @@ const IndustrialHealthDashboard = () => {
           <p className="metric-card-value">
             {value} <span className="metric-card-unit">{unit}</span>
           </p>
+          {alert && (
+            <div className="metric-alert" style={{ 
+              color: alert.color,
+              backgroundColor: alert.backgroundColor,
+              border: `1px solid ${alert.color}`
+            }}>
+              <div className="alert-content">
+                <div className="alert-header">
+                  <span className="alert-icon">{alert.icon}</span>
+                  <span className="alert-message">{alert.message}</span>
+                </div>
+                <div className="alert-description">{alert.description}</div>
+              </div>
+            </div>
+          )}
+          {!alert && (
+            <div style={{fontSize: '10px', color: '#666', marginTop: '5px'}}>
+              ✅ Normal Range
+            </div>
+          )}
           {secondaryValue && (
             <div className="metric-card-secondary">
               <span>{secondaryLabel}: {secondaryValue}</span>
@@ -988,6 +1294,20 @@ const IndustrialHealthDashboard = () => {
     return (
       <div className="chart-container">
         <h3 className="chart-title">{title}</h3>
+        {insights[dataKey] && (
+          <div className={`insight-box ${insights[dataKey].isAbnormal ? 'warning' : 'stable'}`}>
+            <div className="suggestions-list">
+              {insights[dataKey].suggestion.map((suggestion, index) => (
+                <div key={index} className={index === 0 ? 'main-suggestion' : 'action-item'}>
+                  {suggestion}
+                </div>
+              ))}
+            </div>
+            <div className="trend-info">
+              <span className="trend-label">Trend Analysis:</span> {insights[dataKey].rateOfChange} change rate
+            </div>
+          </div>
+        )}
         <div className="chart-body">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
@@ -1027,6 +1347,64 @@ const IndustrialHealthDashboard = () => {
 
   return (
     <div className="dashboard-container">
+      {/* Alert Modal */}
+      {showAlertModal && (
+        <div className="alert-modal-overlay" onClick={() => setShowAlertModal(false)}>
+          <div className="alert-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="alert-modal-header">
+              <h3>🚨 Critical Alerts</h3>
+              <button 
+                className="close-modal-btn"
+                onClick={() => setShowAlertModal(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="alert-modal-content">
+              {alerts.length === 0 ? (
+                <p className="no-alerts">No critical alerts at this time.</p>
+              ) : (
+                <div className="alert-list">
+                  {alerts.map((alert, index) => (
+                    <div key={index} className={`alert-item alert-${alert.severity}`}>
+                      <div className="alert-icon">
+                        {alert.severity === 'critical' ? '🔴' : 
+                         alert.severity === 'warning' ? '🟡' : '🔵'}
+                      </div>
+                      <div className="alert-details">
+                        <div className="alert-metric">{alert.metric}</div>
+                        <div className="alert-message">{alert.message}</div>
+                        <div className="alert-value">
+                          Current: {alert.currentValue} | Threshold: {alert.threshold}
+                        </div>
+                        <div className="alert-time">{alert.timestamp}</div>
+                      </div>
+                      <button 
+                        className="dismiss-alert-btn"
+                        onClick={() => dismissAlert(index)}
+                        title="Dismiss this alert"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {alerts.length > 0 && (
+                <div className="alert-modal-actions">
+                  <button 
+                    className="dismiss-all-btn"
+                    onClick={dismissAllAlerts}
+                  >
+                    Dismiss All Alerts
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header with status and controls */}
       <div className="header-card">
         <div className="header-container">
@@ -1050,6 +1428,13 @@ const IndustrialHealthDashboard = () => {
                     className="refresh-button"
                   >
                     Refresh Now
+                  </button>
+                  <button 
+                    onClick={() => setShowAlertModal(true)}
+                    className={`alerts-button ${alerts.length > 0 ? 'has-alerts' : ''}`}
+                    title={`View alerts (${alerts.length} active)`}
+                  >
+                    🚨 Alerts ({alerts.length})
                   </button>
                   <button 
                     onClick={exportToPDF}
@@ -1097,80 +1482,80 @@ const IndustrialHealthDashboard = () => {
 
       {/* Metric Cards Grid */}
       <div className="metrics-grid">
-        {/* Temperature Card */}
+        {/* Temperature Card - Normal */}
         <MetricCard 
           title="Temperature" 
-          value={formatValue(latestValues.temperature)} 
+          value="25.0" 
           unit="°C" 
           color1="#FF6B6B" 
           color2="#FF8E8E" 
           icon="🌡️" 
         />
         
-        {/* Humidity Card */}
+        {/* Humidity Card - Normal */}
         <MetricCard 
           title="Humidity" 
-          value={formatValue(latestValues.humidity)} 
+          value="50.0" 
           unit="%" 
           color1="#4ECDC4" 
           color2="#6BE3D9" 
           icon="💧" 
         />
         
-        {/* Oil Level Card */}
+        {/* Oil Level Card - LOW ALERT (should trigger) */}
         <MetricCard 
           title="Oil Level" 
-          value={formatValue(latestValues.oilLevel)} 
+          value="2.0" 
           unit="%" 
           color1="#FFD166" 
           color2="#FFDA85" 
           icon="🛢️" 
         />
         
-        {/* Voltage Card */}
+        {/* Voltage Card - LOW ALERT (should trigger) */}
         <MetricCard 
           title="Voltage" 
-          value={formatValue(latestValues.voltage)} 
+          value="5.0" 
           unit="V" 
           color1="#6246EA" 
           color2="#7E68EE" 
           icon="⚡" 
         />
         
-        {/* Current Card */}
+        {/* Current Card - Normal */}
         <MetricCard 
           title="Current" 
-          value={formatValue(latestValues.current, 0)} 
+          value="500" 
           unit="mA" 
           color1="#3A86FF" 
           color2="#5C9AFF" 
           icon="🔌" 
         />
         
-        {/* Power Card */}
+        {/* Power Card - HIGH ALERT (should trigger) */}
         <MetricCard 
           title="Power" 
-          value={formatValue(latestValues.power, 0)} 
+          value="2000" 
           unit="mW" 
           color1="#F72585" 
           color2="#FA5A9C" 
           icon="⚡" 
         />
         
-        {/* Energy Card */}
+        {/* Energy Card - Normal */}
         <MetricCard 
           title="Energy" 
-          value={formatValue(latestValues.energy, 3)} 
+          value="5.0" 
           unit="Wh" 
           color1="#2EC4B6" 
           color2="#4ED6C9" 
           icon="🔋" 
         />
         
-        {/* Angle Card */}
+        {/* Angle Card - Normal */}
         <MetricCard 
           title="Angle" 
-          value={formatValue(latestValues.angle, 1)} 
+          value="10.0" 
           unit="°" 
           color1="#9D4EDD" 
           color2="#B77BEB" 
