@@ -12,17 +12,9 @@ const IndustrialHealthDashboard = () => {
   const [dataSource, setDataSource] = useState('Unknown');
   const [lastUpdate, setLastUpdate] = useState(null);
   const [isExportingPDF, setIsExportingPDF] = useState(false); // New state to track PDF export
-  const [latestValues, setLatestValues] = useState({
-    timestamp: new Date().toLocaleTimeString(),
-    temperature: 0,
-    humidity: 0,
-    oilLevel: 0,
-    voltage: 0,
-    current: 0,
-    power: 0,
-    energy: 0,
-    angle: 0
-  });
+  const [latestValues, setLatestValues] = useState(null);
+  // Flag indicating latestValues has been set from data fetch
+  const [hasFetchedValues, setHasFetchedValues] = useState(false);
 
   const [insights, setInsights] = useState({});
   const [alerts, setAlerts] = useState([]);
@@ -253,7 +245,8 @@ const IndustrialHealthDashboard = () => {
         setConnectionStatus('✅ Connected to Google Sheet');
         setDataSource('Google Sheet (Live Data)');
         setData(processedData);
-        setLatestValues(latestRow);
+  setLatestValues(latestRow);
+  setHasFetchedValues(true);
         setLastUpdate(new Date().toLocaleString());
         setInsights(newInsights);
         setLoading(false);
@@ -312,12 +305,16 @@ const IndustrialHealthDashboard = () => {
     }
     
     // Set the latest values for cards
-    setLatestValues(fallbackData[fallbackData.length - 1]);
+  setLatestValues(fallbackData[fallbackData.length - 1]);
+  setHasFetchedValues(true);
     setData(fallbackData);
     return fallbackData;
   };
 
   // Initial data fetch and setup polling for real-time updates
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const fetchData = async () => {
       await fetchGoogleSheetData();
@@ -338,8 +335,15 @@ const IndustrialHealthDashboard = () => {
     
     // Clean up interval on component unmount
     return () => clearInterval(intervalId);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isExportingPDF]);
+
+  // Trigger alert checks whenever latestValues change after data fetch
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (hasFetchedValues && latestValues) {
+      checkForCriticalAlerts();
+    }
+  }, [latestValues, hasFetchedValues]);
 
   // Function to format values with appropriate precision
   const formatValue = (value, precision = 1) => {
@@ -1136,33 +1140,51 @@ const IndustrialHealthDashboard = () => {
   // Function to check all metrics and generate popup alerts
   const checkForCriticalAlerts = () => {
     const currentAlerts = [];
-    const testValues = {
-      'Temperature': '25.0',
-      'Humidity': '50.0', 
-      'Oil Level': '2.0',  // Should trigger
-      'Voltage': '5.0',    // Should trigger
-      'Current': '500',
-      'Power': '2000',     // Should trigger
-      'Energy': '5.0',
-      'Angle': '10.0'
-    };
+  // Get the latest values from your state (assuming latestValues is up to date)
+  const oilRaw = latestValues?.oilLevel;
+  const angleRaw = latestValues?.angle;
+  // Parse to numbers for correct threshold comparison
+  const oilLevel = oilRaw !== undefined ? parseFloat(oilRaw) : NaN;
+  const angle = angleRaw !== undefined ? parseFloat(angleRaw) : NaN;
 
-    Object.entries(testValues).forEach(([metric, value]) => {
-      const alert = getMetricAlert(metric, value);
-      if (alert) {
-        currentAlerts.push({
-          id: Date.now() + Math.random(),
-          metric,
-          value,
-          alert,
-          timestamp: new Date().toLocaleTimeString()
-        });
-      }
-    });
+    // Only alert if oilLevel is NOT equal to 20% (below or above 20%)
+    if (!isNaN(oilLevel) && oilLevel !== 20) {
+      // Oil Level threshold check (20%)
+      const isBelow = oilLevel < 20;
+      currentAlerts.push({
+        id: 'oil-' + Date.now() + Math.random(),
+        metric: 'Oil Level',
+        severity: 'critical',
+        message: `🛢️ Oil Level ${isBelow ? 'LOW' : 'HIGH'} ALERT`,
+        currentValue: oilLevel.toFixed(1) + '%',
+        threshold: '20%',
+        description: `Oil level is ${oilLevel.toFixed(1)}% (${isBelow ? 'below' : 'above'} threshold 20%)`,
+        timestamp: new Date().toLocaleTimeString()
+      });
+    }
+
+    // Only alert if angle is outside the normal range (-3.5° to 3.5°)
+    // Alert when angle < -3.5° OR angle > 3.5°
+    if (!isNaN(angle) && (angle < -3.5 || angle > 3.5)) {
+      const isBelow = angle < -3.5;
+      const isAbove = angle > 3.5;
+      currentAlerts.push({
+        id: 'angle-' + Date.now() + Math.random(),
+        metric: 'Angle',
+        severity: 'critical',
+        message: `📐 Angle ${isBelow ? 'LOW' : 'HIGH'} ALERT`,
+        currentValue: angle.toFixed(2) + '°',
+        threshold: 'Normal range: -3.5° to 3.5°',
+        description: `Angle is ${angle.toFixed(2)}° (${isBelow ? 'below -3.5°' : 'above 3.5°'} threshold)`,
+        timestamp: new Date().toLocaleTimeString()
+      });
+    }
 
     if (currentAlerts.length > 0) {
       setAlerts(currentAlerts);
       setShowAlertModal(true);
+    } else {
+      setAlerts([]);
     }
   };
 
@@ -1182,58 +1204,57 @@ const IndustrialHealthDashboard = () => {
 
   // Function to check metric thresholds and generate alerts
   const getMetricAlert = (metric, value) => {
-    console.log(`🔍 Checking alert for: ${metric} with value: ${value}`);
-    
-    // Simple direct mapping - no complex normalization
-    const thresholds = {
-      'Temperature': { low: 15, high: 35 },
-      'Humidity': { low: 30, high: 70 },
-      'Oil Level': { low: 5, high: 85 },
-      'Voltage': { low: 20, high: 240 },
-      'Current': { low: 50, high: 1200 },
-      'Power': { low: 200, high: 1500 },
-      'Energy': { low: 0.1, high: 40 },
-      'Angle': { low: -150, high: 150 }
-    };
-
-    const threshold = thresholds[metric];
-    
-    if (!threshold) {
-      console.log(`❌ No threshold found for metric: ${metric}`);
-      return null;
+    // Only provide alert for Oil Level and Angle, and only at the specified thresholds
+    if (metric === 'Oil Level') {
+      const numValue = parseFloat(value);
+      if (isNaN(numValue)) return null;
+      // Only alert if NOT equal to 20% (below or above 20%)
+      if (numValue !== 20) {
+        if (numValue < 20) {
+          return {
+            type: 'low',
+            message: `🛢️ Oil Level LOW ALERT`,
+            description: `Oil level is ${numValue.toFixed(1)}% (below threshold 20%)`,
+            icon: '🔴',
+            color: '#ff0000',
+            backgroundColor: 'rgba(255, 0, 0, 0.15)'
+          };
+        } else if (numValue > 20) {
+          return {
+            type: 'high',
+            message: `🛢️ Oil Level HIGH ALERT`,
+            description: `Oil level is ${numValue.toFixed(1)}% (above threshold 20%)`,
+            icon: '🔴',
+            color: '#ff0000',
+            backgroundColor: 'rgba(255, 0, 0, 0.15)'
+          };
+        }
+      }
     }
-
-    const numValue = parseFloat(value);
-    if (isNaN(numValue)) {
-      console.log(`❌ Invalid value for ${metric}: ${value}`);
-      return null;
+    if (metric === 'Angle') {
+      const numValue = parseFloat(value);
+      if (isNaN(numValue)) return null;
+      // Only alert if outside normal range (-3.5° to 3.5°)
+      if (numValue < -3.5) {
+        return {
+          type: 'low',
+          message: `📐 Angle LOW ALERT`,
+          description: `Angle is ${numValue.toFixed(2)}° (below -3.5° threshold)`,
+          icon: '🔴',
+          color: '#ff0000',
+          backgroundColor: 'rgba(255, 0, 0, 0.15)'
+        };
+      } else if (numValue > 3.5) {
+        return {
+          type: 'high',
+          message: `📐 Angle HIGH ALERT`,
+          description: `Angle is ${numValue.toFixed(2)}° (above 3.5° threshold)`,
+          icon: '🔴',
+          color: '#ff0000',
+          backgroundColor: 'rgba(255, 0, 0, 0.15)'
+        };
+      }
     }
-
-    console.log(`📊 ${metric}: ${numValue} vs low: ${threshold.low}, high: ${threshold.high}`);
-
-    if (numValue <= threshold.low) {
-      console.log(`🚨 LOW ALERT triggered for ${metric}!`);
-      return {
-        type: 'low',
-        message: `⚠️ CRITICAL: Low ${metric} Detected!`,
-        description: `Value: ${numValue} (Min: ${threshold.low})`,
-        icon: '🔴',
-        color: '#ff0000',
-        backgroundColor: 'rgba(255, 0, 0, 0.15)'
-      };
-    } else if (numValue >= threshold.high) {
-      console.log(`🚨 HIGH ALERT triggered for ${metric}!`);
-      return {
-        type: 'high',
-        message: `⚠️ ALERT: High ${metric} Warning!`,
-        description: `Value: ${numValue} (Max: ${threshold.high})`,
-        icon: '🔴',
-        color: '#ff0000',
-        backgroundColor: 'rgba(255, 0, 0, 0.15)'
-      };
-    }
-    
-    console.log(`✅ No alert needed for ${metric}: ${numValue} is within range`);
     return null;
   };
 
@@ -1374,9 +1395,12 @@ const IndustrialHealthDashboard = () => {
                       <div className="alert-details">
                         <div className="alert-metric">{alert.metric}</div>
                         <div className="alert-message">{alert.message}</div>
-                        <div className="alert-value">
-                          Current: {alert.currentValue} | Threshold: {alert.threshold}
-                        </div>
+                        {/* Display detailed description including below/above threshold info */}
+                        {alert.description && (
+                          <div className="alert-description">
+                            {alert.description}
+                          </div>
+                        )}
                         <div className="alert-time">{alert.timestamp}</div>
                       </div>
                       <button 
@@ -1482,80 +1506,80 @@ const IndustrialHealthDashboard = () => {
 
       {/* Metric Cards Grid */}
       <div className="metrics-grid">
-        {/* Temperature Card - Normal */}
+        {/* Temperature Card */}
         <MetricCard 
           title="Temperature" 
-          value="25.0" 
+          value={formatValue(latestValues?.temperature)}
           unit="°C" 
           color1="#FF6B6B" 
           color2="#FF8E8E" 
           icon="🌡️" 
         />
         
-        {/* Humidity Card - Normal */}
+        {/* Humidity Card */}
         <MetricCard 
           title="Humidity" 
-          value="50.0" 
+          value={formatValue(latestValues?.humidity)}
           unit="%" 
           color1="#4ECDC4" 
           color2="#6BE3D9" 
           icon="💧" 
         />
         
-        {/* Oil Level Card - LOW ALERT (should trigger) */}
+        {/* Oil Level Card */}
         <MetricCard 
           title="Oil Level" 
-          value="2.0" 
+          value={formatValue(latestValues?.oilLevel)}
           unit="%" 
           color1="#FFD166" 
           color2="#FFDA85" 
           icon="🛢️" 
         />
         
-        {/* Voltage Card - LOW ALERT (should trigger) */}
+        {/* Voltage Card */}
         <MetricCard 
           title="Voltage" 
-          value="5.0" 
+          value={formatValue(latestValues?.voltage)}
           unit="V" 
           color1="#6246EA" 
           color2="#7E68EE" 
           icon="⚡" 
         />
         
-        {/* Current Card - Normal */}
+        {/* Current Card */}
         <MetricCard 
           title="Current" 
-          value="500" 
+          value={formatValue(latestValues?.current, 0)}
           unit="mA" 
           color1="#3A86FF" 
           color2="#5C9AFF" 
           icon="🔌" 
         />
         
-        {/* Power Card - HIGH ALERT (should trigger) */}
+        {/* Power Card */}
         <MetricCard 
           title="Power" 
-          value="2000" 
+          value={formatValue(latestValues?.power, 0)}
           unit="mW" 
           color1="#F72585" 
           color2="#FA5A9C" 
           icon="⚡" 
         />
         
-        {/* Energy Card - Normal */}
+        {/* Energy Card */}
         <MetricCard 
           title="Energy" 
-          value="5.0" 
+          value={formatValue(latestValues?.energy)}
           unit="Wh" 
           color1="#2EC4B6" 
           color2="#4ED6C9" 
           icon="🔋" 
         />
         
-        {/* Angle Card - Normal */}
+        {/* Angle Card */}
         <MetricCard 
           title="Angle" 
-          value="10.0" 
+          value={formatValue(latestValues?.angle)}
           unit="°" 
           color1="#9D4EDD" 
           color2="#B77BEB" 

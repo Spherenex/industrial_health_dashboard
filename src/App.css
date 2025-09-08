@@ -570,6 +570,17 @@
   max-height: 50vh;
   overflow-y: auto;
 }
+ 
+ /* Alert Description in Modal */
+ .alert-description {
+   font-size: 0.9rem;
+   color: #475569;
+   margin-bottom: 6px;
+   line-height: 1.4;
+   background-color: #f8fafc;
+   padding: 8px 12px;
+   border-radius: 4px;
+ }
 
 .no-alerts {
   text-align: center;
