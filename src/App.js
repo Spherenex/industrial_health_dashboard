@@ -34,8 +34,21 @@ const IndustrialHealthDashboard = () => {
       recentValues.reduce((sq, n) => sq + Math.pow(n - avgValue, 2), 0) / recentValues.length
     );
     
-    // Threshold detection (assuming normal distribution)
-    const isAbnormal = Math.abs(recentValues[recentValues.length - 1] - avgValue) > (2 * stdDev);
+    // Metric-specific thresholds for abnormal detection
+    const thresholds = {
+      temperature: 2.0,
+      humidity: 2.0,
+      voltage: 1.5,
+      current: 2.0,
+      oilLevel: 1.5,
+      power: 2.5,    // Power can fluctuate more
+      energy: 2.0,   // Energy consumption threshold
+      angle: 1.2     // More sensitive for angle changes
+    };
+    
+    // Threshold detection using metric-specific sensitivity
+    const isAbnormal = Math.abs(recentValues[recentValues.length - 1] - avgValue) > 
+      (thresholds[metric] || 2.0) * stdDev;
     
     // Determine rate of change
     const rateOfChange = ((recentValues[recentValues.length - 1] - recentValues[0]) / recentValues[0]) * 100;
@@ -141,6 +154,66 @@ const IndustrialHealthDashboard = () => {
           "2. Monitor consumption rate"
         ],
         prediction: "Oil maintenance may be needed in"
+      },
+      power: {
+        high: [
+          "⚡ High power consumption detected.",
+          "1. Check for equipment overload",
+          "2. Review active processes",
+          "3. Monitor thermal conditions"
+        ],
+        low: [
+          "📉 Low power consumption detected.",
+          "1. Verify equipment operation",
+          "2. Check for partial shutdowns",
+          "3. Review efficiency metrics"
+        ],
+        stable: [
+          "✅ Power consumption is optimal.",
+          "1. Continue monitoring load patterns",
+          "2. Schedule efficiency review"
+        ],
+        prediction: "Power optimization may be needed in"
+      },
+      energy: {
+        high: [
+          "⚠️ High energy usage trend detected.",
+          "1. Analyze consumption patterns",
+          "2. Check for energy inefficiencies",
+          "3. Consider load balancing"
+        ],
+        low: [
+          "📊 Low energy consumption detected.",
+          "1. Verify all systems are operational",
+          "2. Check for unexpected shutdowns",
+          "3. Review production schedules"
+        ],
+        stable: [
+          "✅ Energy consumption is stable.",
+          "1. Monitor efficiency metrics",
+          "2. Plan energy audit"
+        ],
+        prediction: "Energy optimization recommended in"
+      },
+      angle: {
+        high: [
+          "📐 High angle deviation detected.",
+          "1. Check mechanical alignment",
+          "2. Inspect mounting brackets",
+          "3. Verify sensor calibration"
+        ],
+        low: [
+          "⚠️ Low angle position detected.",
+          "1. Check for mechanical stress",
+          "2. Verify position sensors",
+          "3. Inspect mounting stability"
+        ],
+        stable: [
+          "✅ Angular position is stable.",
+          "1. Continue alignment monitoring",
+          "2. Schedule calibration check"
+        ],
+        prediction: "Alignment check recommended in"
       }
     };
     
@@ -236,7 +309,7 @@ const IndustrialHealthDashboard = () => {
         const latestRow = processedData[processedData.length - 1];
         
         // Analyze trends after data is processed
-        const metrics = ['temperature', 'humidity', 'voltage', 'current', 'oilLevel'];
+        const metrics = ['temperature', 'humidity', 'voltage', 'current', 'oilLevel', 'power', 'energy', 'angle'];
         const newInsights = {};
         metrics.forEach(metric => {
           newInsights[metric] = analyzeTrend(processedData, metric);
